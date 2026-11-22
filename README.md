@@ -22,7 +22,7 @@ Run `naome --version` or `rep --version` to verify the command is available.
 
 ## Release updates
 
-The [release sync workflow](https://github.com/naome-core/homebrew-tap/actions/workflows/sync-releases.yml) checks the latest stable releases every 15 minutes. Run it from the Actions tab to check immediately. GitHub can suspend scheduled workflows after 60 days of repository inactivity. Re-enable the workflow in Actions if that happens.
+Publishing a stable release in either NAOME repository starts the [release sync workflow](https://github.com/naome-core/homebrew-tap/actions/workflows/sync-releases.yml). Run it from the Actions tab to retry a sync.
 
 Publish an immutable `vX.Y.Z` release with the corresponding asset.
 
