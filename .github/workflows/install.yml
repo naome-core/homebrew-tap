@@ -1,0 +1,36 @@
+name: Test Homebrew installs
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    name: Install and test (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [macos-15, ubuntu-24.04]
+
+    steps:
+      - name: Set up Homebrew and check out the tap
+        uses: Homebrew/actions/setup-homebrew@61b401267256bb9c047d6d1481b176d5772a0ba7
+        with:
+          stable: true
+
+      - name: Install and test NAOME Network
+        if: runner.os == 'macOS'
+        run: |
+          brew install naome-core/tap/naome-network
+          brew test naome-network
+
+      - name: Install and test NAOME Protocol
+        run: |
+          brew install naome-core/tap/naome-protocol
+          brew test naome-protocol
