@@ -1,0 +1,65 @@
+name: Sync NAOME releases
+
+on:
+  schedule:
+    - cron: '7,22,37,52 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-sync-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'naome-core/homebrew-tap'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      formula_patch: ${{ steps.update.outputs.formula_patch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Compare formulas with the latest releases
+        id: update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/sync_releases.py
+          git diff --check -- Formula/
+          if git diff --quiet -- Formula/; then
+            echo 'No formula updates are ready.'
+          else
+            git diff -- Formula/
+            patch=$(git diff -- Formula/ | base64 -w 0)
+            printf 'formula_patch=%s\n' "$patch" >> "$GITHUB_OUTPUT"
+          fi
+
+  test:
+    needs: prepare
+    if: needs.prepare.outputs.formula_patch != ''
+    uses: ./.github/workflows/install.yml
+    with:
+      formula_patch: ${{ needs.prepare.outputs.formula_patch }}
+
+  publish:
+    needs: [prepare, test]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Publish the tested formula changes
+        env:
+          NAOME_FORMULA_PATCH: ${{ needs.prepare.outputs.formula_patch }}
+        run: |
+          printf '%s' "$NAOME_FORMULA_PATCH" | base64 -d | git apply --index
+          git -c user.name='github-actions[bot]' \
+            -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -m 'Update NAOME Homebrew formulas'
+          git push origin HEAD:refs/heads/main
