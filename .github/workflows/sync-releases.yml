@@ -2,6 +2,11 @@ name: Sync NAOME releases
 
 on:
   workflow_dispatch:
+    inputs:
+      retries_left:
+        description: Remaining retries if main changes during testing
+        type: number
+        default: 2
 
 permissions:
   contents: read
@@ -16,10 +21,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
+      base_sha: ${{ steps.update.outputs.base_sha }}
       formula_patch: ${{ steps.update.outputs.formula_patch }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.ref }}
           persist-credentials: false
       - name: Compare formulas with the latest releases
         id: update
@@ -32,6 +39,7 @@ jobs:
             echo 'No formula updates are ready.'
           else
             git diff -- Formula/
+            printf 'base_sha=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
             patch=$(git diff -- Formula/ | base64 -w 0)
             printf 'formula_patch=%s\n' "$patch" >> "$GITHUB_OUTPUT"
           fi
@@ -41,6 +49,7 @@ jobs:
     if: needs.prepare.outputs.formula_patch != ''
     uses: ./.github/workflows/install.yml
     with:
+      base_sha: ${{ needs.prepare.outputs.base_sha }}
       formula_patch: ${{ needs.prepare.outputs.formula_patch }}
 
   publish:
@@ -50,14 +59,58 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
+    outputs:
+      stale: ${{ steps.publish.outputs.stale }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.prepare.outputs.base_sha }}
       - name: Publish the tested formula changes
+        id: publish
+        shell: bash
         env:
+          NAOME_BASE_SHA: ${{ needs.prepare.outputs.base_sha }}
           NAOME_FORMULA_PATCH: ${{ needs.prepare.outputs.formula_patch }}
         run: |
+          current_main() {
+            git ls-remote --exit-code origin refs/heads/main | cut -f1
+          }
+          retry_if_stale() {
+            local head
+            head=$(current_main) || exit 1
+            if [[ "$head" != "$NAOME_BASE_SHA" ]]; then
+              echo 'main changed after the candidate was prepared.'
+              echo 'stale=true' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          }
+
+          retry_if_stale
           printf '%s' "$NAOME_FORMULA_PATCH" | base64 -d | git apply --index
           git -c user.name='github-actions[bot]' \
             -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
             commit -m 'Update NAOME Homebrew formulas'
-          git push origin HEAD:refs/heads/main
+          if ! git push origin HEAD:refs/heads/main; then
+            retry_if_stale
+            exit 1
+          fi
+
+  retry:
+    needs: publish
+    if: needs.publish.outputs.stale == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      - name: Restart from the latest main and retest
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NAOME_RETRIES_LEFT: ${{ inputs.retries_left }}
+        run: |
+          case "$NAOME_RETRIES_LEFT" in
+            1|2) gh workflow run sync-releases.yml --repo "$GITHUB_REPOSITORY" --ref main \
+                   -f "retries_left=$((NAOME_RETRIES_LEFT - 1))" ;;
+            *) echo '::error::The release sync ran out of retries after main changed.'; exit 1 ;;
+          esac

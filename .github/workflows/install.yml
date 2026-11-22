@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_call:
     inputs:
+      base_sha:
+        type: string
+        default: ""
       formula_patch:
         type: string
         default: ""
@@ -32,8 +35,11 @@ jobs:
       - name: Apply the candidate formula changes
         if: inputs.formula_patch
         env:
+          NAOME_BASE_SHA: ${{ inputs.base_sha }}
           NAOME_FORMULA_PATCH: ${{ inputs.formula_patch }}
         run: |
+          git fetch --no-tags origin "$NAOME_BASE_SHA"
+          git checkout --detach "$NAOME_BASE_SHA"
           python3 -c 'import base64, os, sys; sys.stdout.buffer.write(base64.b64decode(os.environ["NAOME_FORMULA_PATCH"], validate=True))' | git apply
 
       - name: Install and test NAOME Network
