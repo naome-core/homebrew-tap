@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      formula_patch:
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -23,6 +28,13 @@ jobs:
         uses: Homebrew/actions/setup-homebrew@61b401267256bb9c047d6d1481b176d5772a0ba7
         with:
           stable: true
+
+      - name: Apply the candidate formula changes
+        if: inputs.formula_patch
+        env:
+          NAOME_FORMULA_PATCH: ${{ inputs.formula_patch }}
+        run: |
+          python3 -c 'import base64, os, sys; sys.stdout.buffer.write(base64.b64decode(os.environ["NAOME_FORMULA_PATCH"], validate=True))' | git apply
 
       - name: Install and test NAOME Network
         if: runner.os == 'macOS'
