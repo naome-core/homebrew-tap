@@ -1,8 +1,8 @@
 class NaomeProtocol < Formula
   desc "Store and exchange research evidence in local archives"
   homepage "https://github.com/naome-core/naome-protocol"
-  url "https://github.com/naome-core/naome-protocol/releases/download/v0.1.7/naome-protocol-0.1.7.crate"
-  sha256 "e68a6b24db19fdf401ea8f6d55ac3edb4c13fcb37f79532faad1670582dda039"
+  url "https://github.com/naome-core/naome-protocol/releases/download/v0.1.8/naome-protocol-0.1.8.crate"
+  sha256 "7717c1f2ad8452823ab9d18af3472671210944f4adba904f0dc699a579f4901d"
   license "MIT"
 
   depends_on "rust" => :build
